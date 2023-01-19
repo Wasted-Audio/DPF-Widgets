@@ -68,13 +68,24 @@ namespace ImGuiKnobs {
 
             knob(const char *_label, ImGuiDataType data_type, DataType *p_value, DataType v_min, DataType v_max, float speed, float _radius, const char *format, ImGuiKnobFlags flags) {
                 radius = _radius;
-                t = ((float) *p_value - v_min) / (v_max - v_min);
+                ImGuiSliderFlags drag_flags = 0;
+
+                if (flags & ImGuiKnobFlags_Logarithmic) {
+                    // to get max based on center and min
+                    // v_max = min * e^(2 * ln( v_def / v_min ))
+                    t = log((float) *p_value / v_min) / log(v_max / v_min);
+                    drag_flags |= ImGuiSliderFlags_Logarithmic;
+                }
+                else
+                {
+                    t = ((float) *p_value - v_min) / (v_max - v_min);
+                }
                 auto screen_pos = ImGui::GetCursorScreenPos();
 
                 // Handle dragging
                 ImGui::InvisibleButton(_label, {radius * 2.0f, radius * 2.0f});
                 auto gid = ImGui::GetID(_label);
-                ImGuiSliderFlags drag_flags = 0;
+
                 if (!(flags & ImGuiKnobFlags_DragHorizontal)) {
                     drag_flags |= ImGuiSliderFlags_Vertical;
                 }
@@ -172,11 +183,20 @@ namespace ImGuiKnobs {
                 ImGui::EndTooltip();
             }
 
+
+            if (flags & ImGuiKnobFlags_DoubleClickReset && ImGui::IsMouseDoubleClicked(0))
+            {
+                k.value_changed = true;
+            } 
+            else 
             // Draw input
             if (!(flags & ImGuiKnobFlags_NoInput)) {
                 ImGuiSliderFlags drag_flags = 0;
                 if (!(flags & ImGuiKnobFlags_DragHorizontal)) {
                     drag_flags |= ImGuiSliderFlags_Vertical;
+                }
+                if (flags & ImGuiKnobFlags_Logarithmic) {
+                    drag_flags |= ImGuiSliderFlags_Logarithmic;
                 }
                 auto changed = ImGui::DragScalar("###knob_drag", data_type, p_value, speed, &v_min, &v_max, format, drag_flags);
                 if (changed) {
@@ -206,9 +226,9 @@ namespace ImGuiKnobs {
                     colors[ImGuiCol_ButtonActive].w);
 
             auto hovered = ImVec4(
-                    colors[ImGuiCol_ButtonHovered].x * 0.5f,
-                    colors[ImGuiCol_ButtonHovered].y * 0.5f,
-                    colors[ImGuiCol_ButtonHovered].z * 0.5f,
+                    colors[ImGuiCol_ButtonHovered].x * 2.0f,
+                    colors[ImGuiCol_ButtonHovered].y * 2.0f,
+                    colors[ImGuiCol_ButtonHovered].z * 2.0f,
                     colors[ImGuiCol_ButtonHovered].w);
 
             return {active, hovered, hovered};
@@ -270,6 +290,17 @@ namespace ImGuiKnobs {
 
                 knob.draw_circle(0.6f, detail::GetSecondaryColorSet(), true, 32);
                 knob.draw_dot(0.12f, 0.4f, knob.angle, detail::GetPrimaryColorSet(), true, 12);
+                break;
+            }
+            case ImGuiKnobVariant_SteppedTick: {
+                for (auto n = 0.f; n < steps; n++) {
+                    auto a = n / (steps - 1);
+                    auto angle = knob.angle_min + (knob.angle_max - knob.angle_min) * a;
+                    knob.draw_tick(0.7f, 0.9f, 0.04f, angle, detail::GetPrimaryColorSet());
+                }
+
+                knob.draw_circle(0.6f, detail::GetSecondaryColorSet(), true, 32);
+                knob.draw_tick(0.35f, 0.65f, 0.08f, knob.angle, detail::GetPrimaryColorSet());
                 break;
             }
             case ImGuiKnobVariant_Space: {

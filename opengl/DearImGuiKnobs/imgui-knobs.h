@@ -10,6 +10,8 @@ enum ImGuiKnobFlags_ {
     ImGuiKnobFlags_NoInput = 1 << 1,
     ImGuiKnobFlags_ValueTooltip = 1 << 2,
     ImGuiKnobFlags_DragHorizontal = 1 << 3,
+    ImGuiKnobFlags_Logarithmic = 1 << 4,
+    ImGuiKnobFlags_DoubleClickReset = 1 << 5,
 };
 
 typedef int ImGuiKnobVariant;
@@ -22,6 +24,7 @@ enum ImGuiKnobVariant_ {
     ImGuiKnobVariant_WiperDot = 1 << 4,
     ImGuiKnobVariant_Stepped = 1 << 5,
     ImGuiKnobVariant_Space = 1 << 6,
+    ImGuiKnobVariant_SteppedTick = 1 << 7,
 };
 
 namespace ImGuiKnobs {

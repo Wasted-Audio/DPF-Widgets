@@ -2251,10 +2251,10 @@ bool ImGui::DragBehaviorT(ImGuiDataType data_type, TYPE* v, float v_speed, const
     if (g.ActiveIdSource == ImGuiInputSource_Mouse && IsMousePosValid() && IsMouseDragPastThreshold(0, g.IO.MouseDragThreshold * DRAG_MOUSE_THRESHOLD_FACTOR))
     {
         adjust_delta = g.IO.MouseDelta[axis];
-        if (g.IO.KeyAlt)
-            adjust_delta *= 1.0f / 100.0f;
-        if (g.IO.KeyShift)
-            adjust_delta *= 10.0f;
+        // if (g.IO.KeyAlt)
+        //     adjust_delta *= 1.0f / 100.0f;
+        // if (g.IO.KeyShift)
+        //     adjust_delta *= 10.0f;
     }
     else if (g.ActiveIdSource == ImGuiInputSource_Nav)
     {
