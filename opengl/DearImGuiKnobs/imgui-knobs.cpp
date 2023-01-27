@@ -232,9 +232,9 @@ namespace ImGuiKnobs {
                     colors[ImGuiCol_ButtonActive].w);
 
             auto hovered = ImVec4(
-                    colors[ImGuiCol_ButtonHovered].x * 0.8f,
-                    colors[ImGuiCol_ButtonHovered].y * 0.8f,
-                    colors[ImGuiCol_ButtonHovered].z * 0.8f,
+                    colors[ImGuiCol_ButtonHovered].x * 0.5f,
+                    colors[ImGuiCol_ButtonHovered].y * 0.5f,
+                    colors[ImGuiCol_ButtonHovered].z * 0.5f,
                     colors[ImGuiCol_ButtonHovered].w);
 
             return {active, hovered, hovered};
