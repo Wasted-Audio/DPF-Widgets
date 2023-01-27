@@ -164,7 +164,7 @@ namespace ImGuiKnobs {
             ImGui::GetCurrentWindow()->DC.CurrLineTextBaseOffset = 0;
 
             // Draw title
-            if (!(flags & ImGuiKnobFlags_NoTitle)) {
+            if (!(flags & ImGuiKnobFlags_NoTitle)) {  
                 auto title_size = ImGui::CalcTextSize(label, NULL, false, width);
 
                 // Center title
@@ -177,9 +177,15 @@ namespace ImGuiKnobs {
             knob<DataType> k(label, data_type, p_value, v_min, v_max, speed, width * 0.5f, format, flags);
 
             // Draw tooltip
-            if (flags & ImGuiKnobFlags_ValueTooltip && (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled) || ImGui::IsItemActive())) {
+            if (flags & ImGuiKnobFlags_ValueTooltip && 
+                (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled) || ImGui::IsItemActive()) &&
+                !(flags & ImGuiKnobFlags_ValueTooltipHideOnClick && ImGui::IsMouseDown(0))) {
                 ImGui::BeginTooltip();
-                ImGui::Text(format, *p_value);
+                if (flags & ImGuiKnobFlags_dB && *p_value == v_min){
+                    ImGui::Text("-inf");
+                } else {
+                    ImGui::Text(format, *p_value);
+                }
                 ImGui::EndTooltip();
             }
 
@@ -226,9 +232,9 @@ namespace ImGuiKnobs {
                     colors[ImGuiCol_ButtonActive].w);
 
             auto hovered = ImVec4(
-                    colors[ImGuiCol_ButtonHovered].x * 2.0f,
-                    colors[ImGuiCol_ButtonHovered].y * 2.0f,
-                    colors[ImGuiCol_ButtonHovered].z * 2.0f,
+                    colors[ImGuiCol_ButtonHovered].x * 0.8f,
+                    colors[ImGuiCol_ButtonHovered].y * 0.8f,
+                    colors[ImGuiCol_ButtonHovered].z * 0.8f,
                     colors[ImGuiCol_ButtonHovered].w);
 
             return {active, hovered, hovered};
@@ -300,7 +306,8 @@ namespace ImGuiKnobs {
                 }
 
                 knob.draw_circle(0.6f, detail::GetSecondaryColorSet(), true, 32);
-                knob.draw_tick(0.35f, 0.65f, 0.08f, knob.angle, detail::GetPrimaryColorSet());
+                knob.draw_circle(0.4f, detail::GetPrimaryColorSet(), true, 12);
+                knob.draw_tick(0.35f, 0.65f, 0.12f, knob.angle, detail::GetPrimaryColorSet());
                 break;
             }
             case ImGuiKnobVariant_Space: {
