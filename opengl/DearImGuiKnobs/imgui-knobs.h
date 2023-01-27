@@ -11,7 +11,9 @@ enum ImGuiKnobFlags_ {
     ImGuiKnobFlags_ValueTooltip = 1 << 2,
     ImGuiKnobFlags_DragHorizontal = 1 << 3,
     ImGuiKnobFlags_Logarithmic = 1 << 4,
-    ImGuiKnobFlags_DoubleClickReset = 1 << 5,
+    ImGuiKnobFlags_dB = 1 << 5,
+    ImGuiKnobFlags_DoubleClickReset = 1 << 6,
+    ImGuiKnobFlags_ValueTooltipHideOnClick = 1 << 7,
 };
 
 typedef int ImGuiKnobVariant;
