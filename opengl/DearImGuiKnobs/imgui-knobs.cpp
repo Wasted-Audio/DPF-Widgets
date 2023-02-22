@@ -170,7 +170,7 @@ namespace ImGuiKnobs {
                 // Center title
                 ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (width - title_size[0]) * 0.5f);
 
-                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.9f, 0.9f, 0.9f, 0.9f));
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.85f, 0.85f, 0.85f, 0.85f));
                 ImGui::Text("%s", label);
                 ImGui::PopStyleColor();
             }
@@ -183,6 +183,7 @@ namespace ImGuiKnobs {
                 (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled) || ImGui::IsItemActive()) &&
                 !(flags & ImGuiKnobFlags_ValueTooltipHideOnClick && ImGui::IsMouseDown(0))) {
                 ImGui::BeginTooltip();
+                ImGui::SetWindowFontScale(0.85f);
                 if (flags & ImGuiKnobFlags_dB && *p_value == v_min){
                     ImGui::Text("-inf");
                 } else {
