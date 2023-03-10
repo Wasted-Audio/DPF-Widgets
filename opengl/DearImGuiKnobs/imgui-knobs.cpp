@@ -164,13 +164,13 @@ namespace ImGuiKnobs {
             ImGui::GetCurrentWindow()->DC.CurrLineTextBaseOffset = 0;
 
             // Draw title
-            if (!(flags & ImGuiKnobFlags_NoTitle)) {  
+            if (!(flags & ImGuiKnobFlags_NoTitle)) {
                 auto title_size = ImGui::CalcTextSize(label, NULL, false, width);
 
                 // Center title
                 ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (width - title_size[0]) * 0.5f);
 
-                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.9f, 0.9f, 0.9f, 0.9f));
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.85f, 0.85f, 0.85f, 0.85f));
                 ImGui::Text("%s", label);
                 ImGui::PopStyleColor();
             }
@@ -179,10 +179,11 @@ namespace ImGuiKnobs {
             knob<DataType> k(label, data_type, p_value, v_min, v_max, speed, width * 0.5f, format, flags);
 
             // Draw tooltip
-            if (flags & ImGuiKnobFlags_ValueTooltip && 
+            if (flags & ImGuiKnobFlags_ValueTooltip &&
                 (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled) || ImGui::IsItemActive()) &&
                 !(flags & ImGuiKnobFlags_ValueTooltipHideOnClick && ImGui::IsMouseDown(0))) {
                 ImGui::BeginTooltip();
+                ImGui::SetWindowFontScale(0.85f);
                 if (flags & ImGuiKnobFlags_dB && *p_value == v_min){
                     ImGui::Text("-inf");
                 } else {
@@ -195,8 +196,8 @@ namespace ImGuiKnobs {
             if (flags & ImGuiKnobFlags_DoubleClickReset && ImGui::IsMouseDoubleClicked(0))
             {
                 k.value_changed = true;
-            } 
-            else 
+            }
+            else
             // Draw input
             if (!(flags & ImGuiKnobFlags_NoInput)) {
                 ImGuiSliderFlags drag_flags = 0;
@@ -319,6 +320,25 @@ namespace ImGuiKnobs {
                     knob.draw_arc(0.4f, 0.15f, knob.angle_min - 1.0f, knob.angle - 1.0f, detail::GetPrimaryColorSet(), 16, 2);
                     knob.draw_arc(0.6f, 0.15f, knob.angle_min + 1.0f, knob.angle + 1.0f, detail::GetPrimaryColorSet(), 16, 2);
                     knob.draw_arc(0.8f, 0.15f, knob.angle_min + 3.0f, knob.angle + 3.0f, detail::GetPrimaryColorSet(), 16, 2);
+                }
+                break;
+            }
+            case ImGuiKnobVariant_SpaceBipolar: {
+
+                auto angle_default = knob.angle_max - knob.angle_min;
+
+                if (knob.t >= 0.51f) {
+                    knob.draw_circle(0.3f - (knob.t - 0.51f) * 0.1f, detail::GetSecondaryColorSet(), true, 16);
+                    knob.draw_arc(0.4f, 0.15f, angle_default       , knob.angle - 1.0f, detail::GetPrimaryColorSet(), 16, 2);
+                    knob.draw_arc(0.6f, 0.15f, angle_default + 0.5f, knob.angle + 1.0f, detail::GetPrimaryColorSet(), 16, 2);
+                    knob.draw_arc(0.8f, 0.15f, angle_default + 1.0f, knob.angle + 2.0f, detail::GetPrimaryColorSet(), 16, 2);
+                } else if ( knob.t <= 0.49f) {
+                    knob.draw_circle(0.3f - (1 - knob.t - 0.49f) * 0.1f, detail::GetSecondaryColorSet(), true, 16);
+                    knob.draw_arc(-0.4f, 0.15f, angle_default       , knob.angle + 1.0f, detail::GetPrimaryColorSet(), 16, 2);
+                    knob.draw_arc(-0.6f, 0.15f, angle_default - 0.5f, knob.angle - 1.0f, detail::GetPrimaryColorSet(), 16, 2);
+                    knob.draw_arc(-0.8f, 0.15f, angle_default - 1.0f, knob.angle - 2.0f, detail::GetPrimaryColorSet(), 16, 2);
+                } else if ( knob.t < 0.51f && knob.t > 0.49f) {
+                    knob.draw_circle(0.3f, detail::GetSecondaryColorSet(), true, 16);
                 }
                 break;
             }

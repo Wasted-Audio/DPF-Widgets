@@ -25,8 +25,9 @@ enum ImGuiKnobVariant_ {
     ImGuiKnobVariant_WiperOnly = 1 << 3,
     ImGuiKnobVariant_WiperDot = 1 << 4,
     ImGuiKnobVariant_Stepped = 1 << 5,
-    ImGuiKnobVariant_Space = 1 << 6,
-    ImGuiKnobVariant_SteppedTick = 1 << 7,
+    ImGuiKnobVariant_SteppedTick = 1 << 6,
+    ImGuiKnobVariant_Space = 1 << 7,
+    ImGuiKnobVariant_SpaceBipolar = 1 << 8,
 };
 
 namespace ImGuiKnobs {
