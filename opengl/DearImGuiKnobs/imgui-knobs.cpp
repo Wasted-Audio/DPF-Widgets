@@ -325,18 +325,18 @@ namespace ImGuiKnobs {
             }
             case ImGuiKnobVariant_SpaceBipolar: {
 
-                auto angle_default = knob.angle_max - knob.angle_min;
+                auto angle_center = knob.angle_max - knob.angle_min;
 
                 if (knob.t >= 0.51f) {
                     knob.draw_circle(0.3f - (knob.t - 0.51f) * 0.1f, detail::GetSecondaryColorSet(), true, 16);
-                    knob.draw_arc(0.4f, 0.15f, angle_default       , knob.angle - 1.0f, detail::GetPrimaryColorSet(), 16, 2);
-                    knob.draw_arc(0.6f, 0.15f, angle_default + 0.5f, knob.angle + 1.0f, detail::GetPrimaryColorSet(), 16, 2);
-                    knob.draw_arc(0.8f, 0.15f, angle_default + 1.0f, knob.angle + 2.0f, detail::GetPrimaryColorSet(), 16, 2);
+                    knob.draw_arc(0.4f, 0.15f, angle_center       , knob.angle, detail::GetPrimaryColorSet(), 16, 2);
+                    knob.draw_arc(0.6f, 0.15f, angle_center + 0.5f, knob.angle + 0.666f, detail::GetPrimaryColorSet(), 16, 2);
+                    knob.draw_arc(0.8f, 0.15f, angle_center + 1.0f, knob.angle + 1.337f, detail::GetPrimaryColorSet(), 16, 2);
                 } else if ( knob.t <= 0.49f) {
                     knob.draw_circle(0.3f - (1 - knob.t - 0.49f) * 0.1f, detail::GetSecondaryColorSet(), true, 16);
-                    knob.draw_arc(-0.4f, 0.15f, angle_default       , knob.angle + 1.0f, detail::GetPrimaryColorSet(), 16, 2);
-                    knob.draw_arc(-0.6f, 0.15f, angle_default - 0.5f, knob.angle - 1.0f, detail::GetPrimaryColorSet(), 16, 2);
-                    knob.draw_arc(-0.8f, 0.15f, angle_default - 1.0f, knob.angle - 2.0f, detail::GetPrimaryColorSet(), 16, 2);
+                    knob.draw_arc(0.4f, 0.15f, angle_center       , knob.angle, detail::GetPrimaryColorSet(), 16, 2);
+                    knob.draw_arc(0.6f, 0.15f, angle_center - 0.5f, knob.angle - 0.666f, detail::GetPrimaryColorSet(), 16, 2);
+                    knob.draw_arc(0.8f, 0.15f, angle_center - 1.0f, knob.angle - 1.337f, detail::GetPrimaryColorSet(), 16, 2);
                 } else if ( knob.t < 0.51f && knob.t > 0.49f) {
                     knob.draw_circle(0.3f, detail::GetSecondaryColorSet(), true, 16);
                 }
