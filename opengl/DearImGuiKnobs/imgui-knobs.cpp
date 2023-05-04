@@ -40,6 +40,11 @@ namespace ImGuiKnobs {
             // Overlap and angle of ends of bezier curves needs work, only looks good when not transperant
             auto overlap = thickness * radius * 0.00001f * IMGUIKNOBS_PI;
             auto delta = end_angle - start_angle;
+
+            if (end_angle < start_angle) {
+                overlap *= -1.0f;
+            }
+
             auto bez_step = 1.0f / bezier_count;
             auto mid_angle = start_angle + overlap;
 
