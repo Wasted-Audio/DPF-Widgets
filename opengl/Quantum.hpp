@@ -1,6 +1,6 @@
 /*
  * Quanta-inspired widgets for DPF
- * Copyright (C) 2022 Filipe Coelho <falktx@falktx.com>
+ * Copyright (C) 2022-2025 Filipe Coelho <falktx@falktx.com>
  *
  * Permission to use, copy, modify, and/or distribute this software for any purpose with
  * or without fee is hereby granted, provided that the above copyright notice and this
@@ -26,6 +26,23 @@ START_NAMESPACE_DGL
 
 // --------------------------------------------------------------------------------------------------------------------
 
+static inline constexpr
+float normalizedLevelMeterValue(const float db)
+{
+    return (
+        db < -70.f ? 0.f :
+        db < -60.f ? (db + 70.f) * 0.25f :
+        db < -50.f ? (db + 60.f) * 0.50f +  2.5f :
+        db < -40.f ? (db + 50.f) * 0.75f +  7.5f :
+        db < -30.f ? (db + 40.f) * 1.50f + 15.0f :
+        db < -20.f ? (db + 30.f) * 2.00f + 30.0f :
+        db <   0.f ? (db + 20.f) * 2.50f + 50.0f :
+        100.f
+    ) / 100.f;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
 struct QuantumTheme {
     // border size for widgets, e.g. button and knob outline border
     uint borderSize = 1;
@@ -36,6 +53,8 @@ struct QuantumTheme {
     // height given to text labels and widgets that use text (without padding)
     uint textHeight = 20;
     // line size for widgets, e.g. slider line
+    uint knobIndicatorSize = 4;
+    // line size for widgets, e.g. slider line
     uint widgetLineSize = 2;
     // how much padding to give from window border to widgets
     uint windowPadding = borderSize + padding * 3;
@@ -45,12 +64,16 @@ struct QuantumTheme {
     Color levelMeterColor = Color::fromHTML("#4a8179");
     // alternative background color for level meter widgets
     Color levelMeterAlternativeColor = Color::fromHTML("#ad68b9");
+    // knob ring color
+    Color knobRingColor = levelMeterColor;
+    // alternative knob rim color
+    Color knobAlternativeRingColor = levelMeterAlternativeColor;
     // background color for widgets, e.g. slider line and knob padding, typically dark
     Color widgetBackgroundColor = Color::fromHTML("#141414");
-    // default active color for widgets, e.g. pressed button and knob body
-    Color widgetDefaultActiveColor = Color::fromHTML("#578079");
-    // default alternative color for widgets, similar to the active just an alternative color
-    Color widgetDefaultAlternativeColor = Color::fromHTML("#5f64f6");
+    // active color for widgets, e.g. pressed button and knob body
+    Color widgetActiveColor = Color::fromHTML("#578079");
+    // alternative color for widgets, similar to the active just an alternative color
+    Color widgetAlternativeColor = Color::fromHTML("#5f64f6");
     // foreground color for widgets, e.g. slider handle and knob indicator, typically light
     Color widgetForegroundColor = Color::fromHTML("#dcdcdc");
     // window background, typically lighter than widget background
@@ -60,7 +83,7 @@ struct QuantumTheme {
     // text color, mid brightness tone
     Color textMidColor = Color::fromHTML("#b3b3b3");
     // text color, dark tone
-    Color textDarkColor = Color::fromHTML("#8c8c8c");
+    Color textDarkColor = Color::fromHTML("#787878");
 };
 
 struct QuantumMetrics
@@ -72,9 +95,11 @@ struct QuantumMetrics
     Size<uint> separatorVertical;
     Size<uint> smallSwitch;
     Size<uint> normalSwitch;
+    Size<uint> radioSwitch;
     Size<uint> gainReductionMeter;
     Size<uint> knob;
     Size<uint> mixerSlider;
+    Size<uint> stereoLevelMeter;
     Size<uint> stereoLevelMeterWithLufs;
     Size<uint> valueMeterHorizontal;
     Size<uint> valueMeterVertical;
@@ -95,12 +120,16 @@ struct QuantumMetrics
                       theme.textHeight / 2 + theme.borderSize * 2),
           normalSwitch(theme.fontSize * 2 + theme.borderSize * 2,
                        theme.fontSize + theme.borderSize * 2),
+          radioSwitch(theme.fontSize * 3 + theme.borderSize * 2,
+                      theme.fontSize * 1.333 + theme.borderSize * 2),
           gainReductionMeter(theme.textHeight * 2,
                              theme.textHeight * 4),
           knob(theme.textHeight * 3 / 2,
-                 theme.textHeight * 3 / 2),
+               theme.textHeight * 3 / 2),
           mixerSlider(theme.textHeight * 2,
                       theme.textHeight * 4),
+          stereoLevelMeter(theme.textHeight * 2 + theme.borderSize * 2,
+                           theme.textHeight * 4),
           stereoLevelMeterWithLufs(theme.textHeight * 4 + theme.borderSize * 4,
                                    theme.textHeight * 4),
           valueMeterHorizontal(theme.textHeight * 4,
@@ -124,7 +153,7 @@ class QuantumButton : public NanoSubWidget,
                       public ButtonEventHandler
 {
     const QuantumTheme& theme;
-    Color backgroundColor = theme.widgetDefaultActiveColor;
+    Color backgroundColor = theme.widgetActiveColor;
     char* label = nullptr;
     bool labelHasNewLine = false;
 
@@ -267,6 +296,35 @@ typedef AbstractQuantumSwitch<true> QuantumSmallSwitch;
 
 // --------------------------------------------------------------------------------------------------------------------
 
+class QuantumRadioSwitch : public NanoSubWidget,
+                           public ButtonEventHandler
+{
+    const QuantumTheme& theme;
+    Color backgroundColor = theme.widgetActiveColor;
+
+public:
+    explicit QuantumRadioSwitch(NanoTopLevelWidget* parent, const QuantumTheme& theme);
+    explicit QuantumRadioSwitch(NanoSubWidget* parent, const QuantumTheme& theme);
+    ~QuantumRadioSwitch() override;
+
+    inline Color getBackgroundColor() const noexcept
+    {
+        return backgroundColor;
+    }
+
+    void adjustSize();
+    void setBackgroundColor(Color color);
+
+protected:
+    void onNanoDisplay() override;
+    bool onMouse(const MouseEvent& ev) override;
+    bool onMotion(const MotionEvent& ev) override;
+
+    DISTRHO_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(QuantumRadioSwitch)
+};
+
+// --------------------------------------------------------------------------------------------------------------------
+
 /*
 class QuantumDualSidedSwitch : public NanoSubWidget,
                                public ButtonEventHandler
@@ -293,30 +351,64 @@ protected:
 
 // --------------------------------------------------------------------------------------------------------------------
 
-class QuantumKnob : public NanoSubWidget,
-                    public KnobEventHandler
+template<bool small>
+class AbstractQuantumKnob : public NanoSubWidget,
+                            public KnobEventHandler
 {
-    const QuantumTheme& theme;
-    Color backgroundColor = theme.widgetDefaultActiveColor;
+public:
+    enum Orientation {
+        LeftToRight,
+        CenterToSides,
+    };
 
 public:
-    explicit QuantumKnob(NanoTopLevelWidget* parent, const QuantumTheme& theme);
-    explicit QuantumKnob(NanoSubWidget* parent, const QuantumTheme& theme);
+    explicit AbstractQuantumKnob(NanoTopLevelWidget* parent, const QuantumTheme& theme);
+    explicit AbstractQuantumKnob(NanoSubWidget* parent, const QuantumTheme& theme);
+    ~AbstractQuantumKnob() override;
 
-    inline Color getBackgroundColor() const noexcept
+    inline const char* getLabel() const noexcept
     {
-        return backgroundColor;
+        return label;
     }
 
-    void setBackgroundColor(Color color);
+    inline Orientation getOrientation() const noexcept
+    {
+        return orientation;
+    }
+
+    inline Color getRingColor() const noexcept
+    {
+        return ringColor;
+    }
+
+    void setLabel(const char* label);
+    void setOrientation(Orientation orientation);
+    void setSideLabels(const char* label1, const char* label2);
+    void setSideLabelsFontSize(uint fontSize);
+    void setUnitLabel(const char* unitLabel);
+
+    void setRingColor(Color color);
 
 protected:
     void onNanoDisplay() override;
     bool onMouse(const MouseEvent& ev) override;
     bool onMotion(const MotionEvent& ev) override;
+    bool onScroll(const ScrollEvent& ev) override;
 
-    DISTRHO_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(QuantumKnob)
+private:
+    const QuantumTheme& theme;
+    Orientation orientation = LeftToRight;
+    Color ringColor = theme.knobRingColor;
+    char* label = nullptr;
+    char* unitLabel = nullptr;
+    char* sidelabels[2] = { nullptr, nullptr };
+    uint sidelabelsFontSize = theme.fontSize;
+
+    DISTRHO_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(AbstractQuantumKnob)
 };
+
+typedef AbstractQuantumKnob<false> QuantumKnob;
+typedef AbstractQuantumKnob<true> QuantumSmallKnob;
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -344,21 +436,40 @@ protected:
 // --------------------------------------------------------------------------------------------------------------------
 
 // assumes -50 to 50 dB range
-class QuantumGainReductionMeter : public NanoSubWidget
+template<bool withValue>
+class AbstractQuantumGainReductionMeter : public NanoSubWidget
 {
     const QuantumTheme& theme;
+    bool enabled = true;
+    char* label;
     float value = 0.f;
 
 public:
-    explicit QuantumGainReductionMeter(NanoSubWidget* parent, const QuantumTheme& theme);
+    explicit AbstractQuantumGainReductionMeter(NanoSubWidget* parent, const QuantumTheme& theme);
+    ~AbstractQuantumGainReductionMeter() override;
 
+    inline const char* getLabel() const noexcept
+    {
+        return label;
+    }
+
+    inline bool isEnabled() const noexcept
+    {
+        return enabled;
+    }
+
+    void setEnabled(bool enabled);
+    void setLabel(const char* label);
     void setValue(float value);
 
 protected:
     void onNanoDisplay() override;
 
-    DISTRHO_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(QuantumGainReductionMeter)
+    DISTRHO_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(AbstractQuantumGainReductionMeter)
 };
+
+typedef AbstractQuantumGainReductionMeter<false> QuantumGainReductionMeter;
+typedef AbstractQuantumGainReductionMeter<true> QuantumGainReductionMeterWithValue;
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -409,7 +520,7 @@ protected:
     void onNanoDisplay() override;
 
     const QuantumTheme& theme;
-    Color backgroundColor = theme.widgetDefaultAlternativeColor;
+    Color backgroundColor = theme.widgetAlternativeColor;
     float maximum = 1.f;
     float minimum = 0.f;
     Orientation orientation = LeftToRight;
@@ -426,7 +537,7 @@ class QuantumValueSlider : public NanoSubWidget,
                            public KnobEventHandler
 {
     const QuantumTheme& theme;
-    Color backgroundColor = theme.widgetDefaultActiveColor;
+    Color backgroundColor = theme.widgetActiveColor;
     Color textColor = theme.textLightColor;
     char* unitLabel = nullptr;
 
@@ -460,6 +571,7 @@ protected:
     void onNanoDisplay() override;
     bool onMouse(const MouseEvent& ev) override;
     bool onMotion(const MotionEvent& ev) override;
+    bool onScroll(const ScrollEvent& ev) override;
 
     DISTRHO_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(QuantumValueSlider)
 };
@@ -480,13 +592,64 @@ protected:
 
 // --------------------------------------------------------------------------------------------------------------------
 
+class QuantumStereoLevelMeter : public NanoSubWidget,
+                                public IdleCallback
+{
+    Application& app;
+    const QuantumTheme& theme;
+    bool enabled = true;
+    float valueL = 0.f;
+    float valueR = 0.f;
+    float minimum = 0.f;
+    float maximum = 1.f;
+    float falloffL = 0.f;
+    float falloffR = 0.f;
+    double timeL = 0.0;
+    double timeR = 0.0;
+    double lastTimeL = 0.0;
+    double lastTimeR = 0.0;
+    char* topLabel = nullptr;
+
+public:
+    explicit QuantumStereoLevelMeter(NanoTopLevelWidget* parent, const QuantumTheme& theme);
+    explicit QuantumStereoLevelMeter(NanoSubWidget* parent, const QuantumTheme& theme);
+    ~QuantumStereoLevelMeter() override;
+
+    inline bool isEnabled() const noexcept
+    {
+        return enabled;
+    }
+
+    inline const char* getTopLabel() const noexcept
+    {
+        return topLabel;
+    }
+
+    void setEnabled(bool enabled);
+    void setRange(float min, float max);
+    void setTopLabel(const char* label);
+    void setValueL(float value);
+    void setValueR(float value);
+    void setValues(float l, float r);
+
+protected:
+    void onNanoDisplay() override;
+    void idleCallback() override;
+
+    DISTRHO_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(QuantumStereoLevelMeter)
+};
+
+// --------------------------------------------------------------------------------------------------------------------
+
 class QuantumStereoLevelMeterWithLUFS : public NanoSubWidget,
                                         public IdleCallback
 {
     Application& app;
     const QuantumTheme& theme;
+    bool enabled = true;
     float valueL = 0.f;
     float valueR = 0.f;
+    float valueLimiter = 0.f;
     float valueLufs = 0.f;
     float minimum = 0.f;
     float maximum = 1.f;
@@ -496,16 +659,31 @@ class QuantumStereoLevelMeterWithLUFS : public NanoSubWidget,
     double timeR = 0.0;
     double lastTimeL = 0.0;
     double lastTimeR = 0.0;
+    char* topLabel = nullptr;
 
 public:
     explicit QuantumStereoLevelMeterWithLUFS(NanoTopLevelWidget* parent, const QuantumTheme& theme);
     explicit QuantumStereoLevelMeterWithLUFS(NanoSubWidget* parent, const QuantumTheme& theme);
+    ~QuantumStereoLevelMeterWithLUFS() override;
 
+    inline bool isEnabled() const noexcept
+    {
+        return enabled;
+    }
+
+    inline const char* getTopLabel() const noexcept
+    {
+        return topLabel;
+    }
+
+    void setEnabled(bool enabled);
     void setRange(float min, float max);
+    void setTopLabel(const char* label);
     void setValueL(float value);
     void setValueR(float value);
+    void setValueLimiter(float value);
     void setValueLufs(float value);
-    void setValues(float l, float r, float lufs);
+    void setValues(float l, float r, float limiter, float lufs);
 
 protected:
     void onNanoDisplay() override;

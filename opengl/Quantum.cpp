@@ -1,6 +1,6 @@
 /*
  * Quanta-inspired widgets for DPF
- * Copyright (C) 2022 Filipe Coelho <falktx@falktx.com>
+ * Copyright (C) 2022-2025 Filipe Coelho <falktx@falktx.com>
  *
  * Permission to use, copy, modify, and/or distribute this software for any purpose with
  * or without fee is hereby granted, provided that the above copyright notice and this
@@ -22,23 +22,6 @@
 #include <cmath>
 
 START_NAMESPACE_DGL
-
-// --------------------------------------------------------------------------------------------------------------------
-
-static inline constexpr
-float normalizedLevelMeterValue(const float db)
-{
-	return (
-        db < -70.f ? 0.f :
-        db < -60.f ? (db + 70.f) * 0.25f :
-        db < -50.f ? (db + 60.f) * 0.50f +  2.5f :
-        db < -40.f ? (db + 50.f) * 0.75f +  7.5f :
-        db < -30.f ? (db + 40.f) * 1.50f + 15.0f :
-        db < -20.f ? (db + 30.f) * 2.00f + 30.0f :
-        db <   0.f ? (db + 20.f) * 2.50f + 50.0f :
-        100.f
-    ) / 100.f;
-}
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -382,7 +365,7 @@ void AbstractQuantumSwitch<small>::onNanoDisplay()
     if (checked)
     {
         rect(theme.borderSize + blockSize , yOffset + theme.borderSize, blockSize, blockSize);
-        fillColor(theme.widgetDefaultActiveColor);
+        fillColor(theme.widgetActiveColor);
     }
     else
     {
@@ -414,6 +397,87 @@ bool AbstractQuantumSwitch<small>::onMotion(const MotionEvent& ev)
 
 template class AbstractQuantumSwitch<false>;
 template class AbstractQuantumSwitch<true>;
+
+// --------------------------------------------------------------------------------------------------------------------
+
+QuantumRadioSwitch::QuantumRadioSwitch(NanoTopLevelWidget* const parent, const QuantumTheme& t)
+    : NanoSubWidget(parent),
+      ButtonEventHandler(this),
+      theme(t)
+{
+    loadSharedResources();
+    setCheckable(true);
+    setSize(QuantumMetrics(t).radioSwitch);
+}
+
+QuantumRadioSwitch::QuantumRadioSwitch(NanoSubWidget* const parent, const QuantumTheme& t)
+    : NanoSubWidget(parent),
+      ButtonEventHandler(this),
+      theme(t)
+{
+    loadSharedResources();
+    setCheckable(true);
+    setSize(QuantumMetrics(t).radioSwitch);
+}
+
+QuantumRadioSwitch::~QuantumRadioSwitch()
+{
+}
+
+void QuantumRadioSwitch::adjustSize()
+{
+    const uint width = theme.fontSize * 3 + theme.borderSize * 2;
+    const uint height = theme.fontSize * 1.333 + theme.borderSize * 2;
+
+    setSize(width, height);
+}
+
+void QuantumRadioSwitch::setBackgroundColor(Color color)
+{
+    backgroundColor = color;
+    repaint();
+}
+
+void QuantumRadioSwitch::onNanoDisplay()
+{
+    const uint width = getWidth() - theme.borderSize * 2;
+    const uint height = getHeight() - theme.borderSize * 2;
+    const uint radioSize = height / 2 - theme.borderSize * 2;
+    const bool checked = isChecked();
+    const bool enabled = isEnabled();
+
+    beginPath();
+    roundedRect(theme.borderSize, theme.borderSize, width, height, height / 2);
+    fillColor(checked && enabled ? backgroundColor : theme.windowBackgroundColor);
+    fill();
+    strokeColor(Color(theme.widgetBackgroundColor, theme.windowBackgroundColor, 0.5f));
+    stroke();
+
+    beginPath();
+    circle(checked ? width - radioSize - theme.borderSize * 2 : theme.borderSize * 3 + radioSize,
+           radioSize + theme.borderSize * 3.333,
+           radioSize);
+    fillColor(enabled ? theme.textLightColor : theme.textDarkColor);
+    fill();
+
+    fontSize(theme.fontSize);
+    textAlign(ALIGN_CENTER|ALIGN_MIDDLE);
+
+    if (checked)
+        text(getWidth() * 0.333, getHeight() / 2, "on", nullptr);
+    else
+        text(getWidth() * 0.666 - theme.borderSize, getHeight() / 2, "off", nullptr);
+}
+
+bool QuantumRadioSwitch::onMouse(const MouseEvent& ev)
+{
+    return mouseEvent(ev);
+}
+
+bool QuantumRadioSwitch::onMotion(const MotionEvent& ev)
+{
+    return motionEvent(ev);
+}
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -509,68 +573,316 @@ bool QuantumDualSidedSwitch::onMotion(const MotionEvent& ev)
 
 // --------------------------------------------------------------------------------------------------------------------
 
-QuantumKnob::QuantumKnob(NanoTopLevelWidget* const parent, const QuantumTheme& t)
+template<bool small>
+AbstractQuantumKnob<small>::AbstractQuantumKnob(NanoTopLevelWidget* const parent, const QuantumTheme& t)
     : NanoSubWidget(parent),
       KnobEventHandler(this),
       theme(t)
 {
+    sidelabelsFontSize = theme.fontSize * parent->getScaleFactor();
+    setMouseDeceleration(500.f);
     setSize(QuantumMetrics(t).knob);
 }
 
-QuantumKnob::QuantumKnob(NanoSubWidget* const parent, const QuantumTheme& t)
+template<bool small>
+AbstractQuantumKnob<small>::AbstractQuantumKnob(NanoSubWidget* const parent, const QuantumTheme& t)
     : NanoSubWidget(parent),
       KnobEventHandler(this),
       theme(t)
 {
+    sidelabelsFontSize = theme.fontSize * getTopLevelWidget()->getScaleFactor();
+    setMouseDeceleration(500.f);
     setSize(QuantumMetrics(t).knob);
 }
 
-void QuantumKnob::setBackgroundColor(Color color)
+template<bool small>
+AbstractQuantumKnob<small>::~AbstractQuantumKnob()
 {
-    backgroundColor = color;
+    std::free(label);
+    std::free(unitLabel);
+    std::free(sidelabels[0]);
+    std::free(sidelabels[1]);
 }
 
-void QuantumKnob::onNanoDisplay()
+template<bool small>
+void AbstractQuantumKnob<small>::setLabel(const char* const label2)
 {
-    const float centerX = getWidth() / 2;
-    const float centerY = getHeight() / 2;
-    const float radius = std::min(centerX, centerY);
-    const float indicatorLineSize = radius/2 + theme.widgetLineSize/2;
-    const float indicatorThickness = theme.widgetLineSize;
+    std::free(label);
+    label = label2 != nullptr && label2[0] != '\0' ? strdup(label2) : nullptr;
+    repaint();
+}
 
+template<bool small>
+void AbstractQuantumKnob<small>::setOrientation(const Orientation orientation2)
+{
+    orientation = orientation2;
+    repaint();
+}
+
+template<bool small>
+void AbstractQuantumKnob<small>::setRingColor(const Color color)
+{
+    ringColor = color;
+    repaint();
+}
+
+template<bool small>
+void AbstractQuantumKnob<small>::setSideLabels(const char* const label1, const char* const label2)
+{
+    std::free(sidelabels[0]);
+    std::free(sidelabels[1]);
+
+    sidelabels[0] = label1 != nullptr && label1[0] != '\0' ? strdup(label1) : nullptr;
+    sidelabels[1] = label2 != nullptr && label2[0] != '\0' ? strdup(label2) : nullptr;
+
+    repaint();
+}
+
+template<bool small>
+void AbstractQuantumKnob<small>::setSideLabelsFontSize(const uint fontSize)
+{
+    sidelabelsFontSize = fontSize;
+    repaint();
+}
+
+template<bool small>
+void AbstractQuantumKnob<small>::setUnitLabel(const char* const unitLabel2)
+{
+    std::free(unitLabel);
+    unitLabel = unitLabel2 != nullptr && unitLabel2[0] != '\0' ? strdup(unitLabel2) : nullptr;
+}
+
+template<bool small>
+void AbstractQuantumKnob<small>::onNanoDisplay()
+{
+    // const double scaleFactor = getScaleFactor();
+    const int w = getWidth();
+    const int h = getHeight();
+    const int ringSize = theme.knobIndicatorSize * (small ? 0.75 : 1.0);
+    const int knobSize = std::min<int>(w, h - (label != nullptr ? theme.fontSize + theme.padding * 2 : 0))
+                       - ringSize - theme.padding * 2;
+
+    const int knobStartX = w / 2 - knobSize / 2;
+    const int knobStartY = theme.padding + ringSize + (label != nullptr && !small ? theme.fontSize + theme.padding * 2 : 0);
+    const int knobCenterX = knobStartX + knobSize / 2;
+    const int knobCenterY = knobStartY + knobSize / 2;
+
+    const bool enabled = isEnabled();
+    const float normalizedValue = getNormalizedValue();
+
+    // label/name
+    if (label != nullptr)
+    {
+        fillColor(enabled ? theme.textLightColor : theme.textDarkColor);
+
+        if (small)
+        {
+            fontSize(theme.fontSize * 0.75);
+            textAlign(ALIGN_CENTER|ALIGN_BOTTOM);
+            textBox(theme.borderSize + theme.padding,
+                    h - theme.borderSize * 3 - theme.padding * 3,
+                    w - theme.borderSize * 2 - theme.padding * 2,
+                    label,
+                    nullptr);
+        }
+        else
+        {
+            fontSize(theme.fontSize);
+            textAlign(ALIGN_CENTER|ALIGN_TOP);
+            text(knobCenterX, theme.padding, label, nullptr);
+        }
+    }
+
+    // side labels
+    if (sidelabels[0] != nullptr && sidelabels[1] != nullptr)
+    {
+        fontSize(sidelabelsFontSize);
+
+        textAlign(ALIGN_RIGHT|ALIGN_TOP);
+        text(knobCenterX - knobSize / 3, h + theme.padding * 3, sidelabels[0], nullptr);
+
+        textAlign(ALIGN_LEFT|ALIGN_TOP);
+        text(knobCenterX + knobSize / 3, h + theme.padding * 3, sidelabels[1], nullptr);
+    }
+
+    // inner fill
     beginPath();
-    circle(centerX, centerY, radius);
-    fillColor(theme.widgetBackgroundColor);
+    circle(knobCenterX, knobCenterY, knobSize / 2);
+    fillPaint(linearGradient(knobStartX,
+                             knobStartY,
+                             knobStartX,
+                             knobStartY + knobSize,
+                             theme.windowBackgroundColor,
+                             Color(theme.windowBackgroundColor, theme.widgetBackgroundColor, 0.5f)));
     fill();
 
+    // inner fill border (inner)
     beginPath();
-    arc(centerX, centerY, radius - theme.borderSize, degToRad(0.0f), degToRad(360.0f), CCW);
-    fillColor(backgroundColor);
-    fill();
+    arc(knobCenterX, knobCenterY, knobSize / 2 - theme.widgetLineSize, degToRad(0.0f), degToRad(360.0f), CCW);
+    closePath();
+    strokeWidth(ringSize);
+    strokeColor(Color(0.5f, 0.5f, 0.5f, 0.4f));
+    stroke();
+
+    // inner fill border (outer)
+    beginPath();
+    arc(knobCenterX, knobCenterY, knobSize / 2 + theme.widgetLineSize, degToRad(0.0f), degToRad(360.0f), CCW);
+    closePath();
+    strokeWidth(ringSize);
+    strokeColor(Color(0.0f, 0.0f, 0.0f, 0.4f));
+    stroke();
 
     lineCap(ROUND);
-    strokeWidth(theme.widgetLineSize);
 
-    save();
-    translate(centerX, centerY);
-    rotate(degToRad(45.0f) + getNormalizedValue() * degToRad(270.0f));
+    // outer ring background
     beginPath();
-    roundedRect(-indicatorThickness/2, indicatorThickness/2, indicatorThickness, indicatorLineSize, theme.widgetLineSize/2);
+    arc(knobCenterX,
+        knobCenterY,
+        knobSize / 2 + ringSize / 2 + theme.widgetLineSize,
+        degToRad(135.0f),
+        degToRad(45.0f),
+        CW);
+    strokeWidth(ringSize);
+    strokeColor(Color(0.5f, 0.5f, 0.5f));
+    stroke();
+
+    // cache
+    Winding wind;
+    float rotationValue;
+    const bool leftToRight = orientation == LeftToRight;
+    const Color enabledRingColor = enabled ? ringColor : ringColor.asGrayscale();
+
+    // outer ring value
+    beginPath();
+    if (leftToRight)
+    {
+        rotationValue = degToRad(270.0f * normalizedValue);
+        wind = CW;
+
+        arc(knobCenterX,
+            knobCenterY,
+            knobSize / 2 + ringSize / 2 + theme.widgetLineSize,
+            degToRad(135.0f),
+            degToRad(135.0f) + rotationValue,
+            CW);
+    }
+    else
+    {
+        rotationValue = degToRad(270.0f * (normalizedValue - 0.5f));
+
+        if (normalizedValue >= 0.5f)
+            wind = CW;
+        else
+            wind = CCW;
+
+        arc(knobCenterX,
+            knobCenterY,
+            knobSize / 2 + ringSize / 2 + theme.widgetLineSize,
+            degToRad(270.0f),
+            degToRad(270.0f) + rotationValue,
+            wind);
+    }
+    strokeWidth(ringSize);
+    strokeColor(enabledRingColor);
+    stroke();
+
+    // outer ring default position indicator
+    beginPath();
+    roundedRect(knobCenterX - ringSize / 2, knobCenterY - knobSize / 2 - ringSize * 1.25, ringSize, ringSize, ringSize * 0.5);
     closePath();
-    fillColor(theme.widgetForegroundColor);
+    fillColor((enabled ? theme.textLightColor : theme.textMidColor).withAlpha(0.5f));
+    fill();
+
+    // simulate color bleeding
+    beginPath();
+    if (leftToRight)
+        arc(knobCenterX,
+            knobCenterY,
+            knobSize * 0.5f - theme.widgetLineSize,
+            degToRad(135.0f),
+            degToRad(135.0f) + rotationValue,
+            CW);
+    else
+        arc(knobCenterX,
+            knobCenterY,
+            knobSize * 0.5f - theme.widgetLineSize,
+            degToRad(270.0f),
+            degToRad(270.0f) + rotationValue,
+            wind);
+    strokeColor(Color(theme.windowBackgroundColor, enabledRingColor, enabled ? 0.5f : 0.25f).withAlpha(0.5f));
+    stroke();
+
+    // line indicator
+    strokeWidth(ringSize);
+    save();
+    translate(knobCenterX, knobCenterY);
+    rotate(degToRad(45.0f) + normalizedValue * degToRad(270.0f));
+    beginPath();
+    roundedRect(ringSize * -0.5f, knobSize * 0.5f - ringSize * 4, ringSize, ringSize * 4, ringSize * 0.5);
+    closePath();
+    fillColor(enabled ? theme.textLightColor : theme.textDarkColor);
     fill();
     restore();
+
+    // center label (value)
+    {
+        char valuestr[32] = {};
+
+        if (isInteger())
+        {
+            const int value = d_roundToInt(getValue());
+
+            if (unitLabel != nullptr)
+                std::snprintf(valuestr, sizeof(valuestr)-1, "%d %s", value, unitLabel);
+            else
+                std::snprintf(valuestr, sizeof(valuestr)-1, "%d", value);
+        }
+        else
+        {
+            const char* format;
+            float value = getValue();
+            float absvalue = std::abs(value);
+
+            if (absvalue < 10)
+                format = "%.2f%s%s";
+            else if (absvalue < 100)
+                format = "%.1f%s%s";
+            else
+                format = "%.0f%s%s";
+
+            if (unitLabel != nullptr)
+                std::snprintf(valuestr, sizeof(valuestr)-1, format, value, " ", unitLabel);
+            else
+                std::snprintf(valuestr, sizeof(valuestr)-1, format, value, "", "");
+        }
+
+        fillColor(enabled ? theme.textLightColor : theme.textDarkColor);
+        fontSize(small ? theme.fontSize * 0.75 : theme.fontSize * 2);
+        textAlign(ALIGN_CENTER|ALIGN_MIDDLE);
+        text(knobCenterX, knobCenterY, valuestr, nullptr);
+    }
 }
 
-bool QuantumKnob::onMouse(const MouseEvent& ev)
+template<bool small>
+bool AbstractQuantumKnob<small>::onMouse(const MouseEvent& ev)
 {
     return mouseEvent(ev, getTopLevelWidget()->getScaleFactor());
 }
 
-bool QuantumKnob::onMotion(const MotionEvent& ev)
+template<bool small>
+bool AbstractQuantumKnob<small>::onMotion(const MotionEvent& ev)
 {
     return motionEvent(ev, getTopLevelWidget()->getScaleFactor());
 }
+
+template<bool small>
+bool AbstractQuantumKnob<small>::onScroll(const ScrollEvent& ev)
+{
+    return scrollEvent(ev);
+}
+
+template class AbstractQuantumKnob<false>;
+template class AbstractQuantumKnob<true>;
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -726,15 +1038,48 @@ bool QuantumMixerSlider::onMotion(const MotionEvent& ev)
 
 // --------------------------------------------------------------------------------------------------------------------
 
-QuantumGainReductionMeter::QuantumGainReductionMeter(NanoSubWidget* const parent, const QuantumTheme& t)
+static constexpr const char* kQuantumLabelLvlGain = "Lvl Gain";
+
+template<bool withValue>
+AbstractQuantumGainReductionMeter<withValue>::AbstractQuantumGainReductionMeter(NanoSubWidget* const parent,
+                                                                                const QuantumTheme& t)
     : NanoSubWidget(parent),
-      theme(t)
+      theme(t),
+      label(const_cast<char*>(kQuantumLabelLvlGain))
 {
     loadSharedResources();
     setSize(QuantumMetrics(t).gainReductionMeter);
 }
 
-void QuantumGainReductionMeter::setValue(const float value2)
+template<bool withValue>
+AbstractQuantumGainReductionMeter<withValue>::~AbstractQuantumGainReductionMeter()
+{
+    if (label != nullptr && label != kQuantumLabelLvlGain)
+        std::free(label);
+}
+
+template<bool withValue>
+void AbstractQuantumGainReductionMeter<withValue>::setEnabled(const bool enabled2)
+{
+    if (enabled == enabled2)
+        return;
+
+    enabled = enabled2;
+    repaint();
+}
+
+template<bool withValue>
+void AbstractQuantumGainReductionMeter<withValue>::setLabel(const char* const label2)
+{
+    if (label != nullptr && label != kQuantumLabelLvlGain)
+        std::free(label);
+
+    label = label2 != nullptr ? strdup(label2) : nullptr;
+    repaint();
+}
+
+template<bool withValue>
+void AbstractQuantumGainReductionMeter<withValue>::setValue(const float value2)
 {
     if (d_isEqual(value, value2))
         return;
@@ -743,15 +1088,27 @@ void QuantumGainReductionMeter::setValue(const float value2)
     repaint();
 }
 
-void QuantumGainReductionMeter::onNanoDisplay()
+template<bool withValue>
+void AbstractQuantumGainReductionMeter<withValue>::onNanoDisplay()
 {
     const uint width = getWidth();
     const uint height = getHeight();
 
-    const float verticalReservedHeight = theme.textHeight;
-    const float usableMeterHeight = height - verticalReservedHeight * 3;
+    float verticalReservedHeight, valueBoxStartY, usableMeterHeight;
+
+    if (withValue)
+    {
+        verticalReservedHeight = theme.textHeight;
+        valueBoxStartY = height - verticalReservedHeight * 2 + theme.borderSize + theme.padding;
+        usableMeterHeight = height - verticalReservedHeight * 3;
+    }
+    else
+    {
+        verticalReservedHeight = theme.fontSize * 2 / 3 + theme.padding;
+        usableMeterHeight = height - verticalReservedHeight;
+    }
+
     const float usableInnerMeterHeight = usableMeterHeight - theme.borderSize * 2;
-    const float valueBoxStartY = height - verticalReservedHeight * 2 + theme.borderSize + theme.padding;
 
     // normal widget background
     beginPath();
@@ -777,14 +1134,14 @@ void QuantumGainReductionMeter::onNanoDisplay()
             rect(theme.borderSize, theme.borderSize + verticalReservedHeight + usableInnerMeterHeight / 2,
                  width - theme.borderSize * 2, usableInnerMeterHeight / 2 * normalizedValue);
         }
-        else
+        else if (value > 0.f)
         {
             // const float normalizedValue = std::max(0.f, std::min(1.f, value / 50.f));
             const float normalizedValue = (1.f - normalizedLevelMeterValue(-value)) * 1.08f;
             rect(theme.borderSize, theme.borderSize + verticalReservedHeight + usableInnerMeterHeight / 2 * (1.f - normalizedValue),
                  width - theme.borderSize * 2, usableInnerMeterHeight / 2 * normalizedValue);
         }
-        fillColor(theme.widgetDefaultAlternativeColor);
+        fillColor(enabled ? theme.widgetAlternativeColor : theme.textDarkColor.withAlpha(0.5f));
         fill();
     }
 
@@ -794,7 +1151,7 @@ void QuantumGainReductionMeter::onNanoDisplay()
     constexpr const float db20 = (1.f - normalizedLevelMeterValue(-20)) * 1.08f;
     constexpr const float db30 = (1.f - normalizedLevelMeterValue(-30)) * 1.08f;
     constexpr const float db40 = (1.f - normalizedLevelMeterValue(-40)) * 1.08f;
-    fillColor(theme.textLightColor);
+    fillColor(enabled ? theme.textMidColor : theme.textDarkColor);
     fontSize(theme.fontSize);
     textAlign(ALIGN_CENTER|ALIGN_MIDDLE);
     const float centerX = width * 0.5f;
@@ -811,30 +1168,38 @@ void QuantumGainReductionMeter::onNanoDisplay()
     text(centerX, yOffset - usableInnerMeterHeight / 2 * db30, "- 30 -", nullptr);
     text(centerX, yOffset - usableInnerMeterHeight / 2 * db40, "- 40 -", nullptr);
 
-    // bottom box and value
-    beginPath();
-    rect(0, valueBoxStartY, width, height - valueBoxStartY);
-    fillColor(theme.widgetBackgroundColor);
-    fill();
-
-    beginPath();
-    rect(theme.borderSize, valueBoxStartY + theme.borderSize, width - theme.borderSize * 2, height - valueBoxStartY - theme.borderSize * 2);
-    fillColor(Color(theme.windowBackgroundColor, theme.widgetBackgroundColor, 0.75f));
-    fill();
-
-    char valuestr[32] = {};
-    const float roundedValue = std::round(value * 10.f)/10.f;
-    std::snprintf(valuestr, sizeof(valuestr)-1, "%.1f", roundedValue);
-
-    fillColor(theme.textLightColor);
     textAlign(ALIGN_CENTER|ALIGN_BOTTOM);
-    fontSize(theme.fontSize);
-    text(width * 0.5f, height - theme.textHeight * 0.5f + theme.borderSize, valuestr, nullptr);
+
+    if (withValue)
+    {
+        // bottom box and value
+        beginPath();
+        rect(0, valueBoxStartY, width, height - valueBoxStartY);
+        fillColor(theme.widgetBackgroundColor);
+        fill();
+
+        beginPath();
+        rect(theme.borderSize, valueBoxStartY + theme.borderSize, width - theme.borderSize * 2, height - valueBoxStartY - theme.borderSize * 2);
+        fillColor(Color(theme.windowBackgroundColor, theme.widgetBackgroundColor, 0.75f));
+        fill();
+
+        char valuestr[32] = {};
+        const float roundedValue = std::round(value * 10.f)/10.f;
+        std::snprintf(valuestr, sizeof(valuestr)-1, "%.1f", roundedValue);
+
+        fillColor(theme.textLightColor);
+        fontSize(theme.fontSize);
+        text(width * 0.5f, height - theme.textHeight * 0.5f + theme.borderSize, valuestr, nullptr);
+    }
 
     // top label
-    fontSize(theme.fontSize * 2 /3);
-    text(width * 0.5f, verticalReservedHeight, "Lvl Gain", nullptr);
+    fillColor(enabled ? theme.textLightColor : theme.textDarkColor);
+    fontSize(theme.fontSize * 2 / 3);
+    text(width * 0.5f, verticalReservedHeight, label, nullptr);
 }
+
+template class AbstractQuantumGainReductionMeter<false>;
+template class AbstractQuantumGainReductionMeter<true>;
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -859,14 +1224,16 @@ QuantumValueMeter::~QuantumValueMeter()
     std::free(unitLabel);
 }
 
-void QuantumValueMeter::setBackgroundColor(Color color)
+void QuantumValueMeter::setBackgroundColor(const Color color)
 {
     backgroundColor = color;
+    repaint();
 }
 
 void QuantumValueMeter::setOrientation(const Orientation orientation2)
 {
     orientation = orientation2;
+    repaint();
 }
 
 void QuantumValueMeter::setRange(const float min, const float max)
@@ -885,6 +1252,8 @@ void QuantumValueMeter::setUnitLabel(const char* const label)
         unitLabel = strdup(label);
     else
         unitLabel = nullptr;
+
+    repaint();
 }
 
 void QuantumValueMeter::setValue(const float value2)
@@ -1045,6 +1414,8 @@ void QuantumValueSlider::setUnitLabel(const char* const label)
         unitLabel = strdup(label);
     else
         unitLabel = nullptr;
+
+    repaint();
 }
 
 bool QuantumValueSlider::setValue(const float value, const bool sendCallback) noexcept
@@ -1072,7 +1443,7 @@ void QuantumValueSlider::onNanoDisplay()
              theme.borderSize,
              (getWidth()-theme.borderSize*2) * normalizedValue,
              getHeight()-theme.borderSize*2);
-        fillColor(backgroundColor);
+        fillColor(isEnabled() ? backgroundColor : theme.textDarkColor.withAlpha(0.5f));
         fill();
     }
 
@@ -1099,7 +1470,7 @@ void QuantumValueSlider::onNanoDisplay()
 
     beginPath();
     fontSize(theme.fontSize);
-    fillColor(textColor);
+    fillColor(isEnabled() ? textColor : theme.textDarkColor);
     textAlign(ALIGN_CENTER|ALIGN_MIDDLE);
     text(getWidth()/2, getHeight()/2, valuestr, nullptr);
 }
@@ -1112,6 +1483,11 @@ bool QuantumValueSlider::onMouse(const MouseEvent& ev)
 bool QuantumValueSlider::onMotion(const MotionEvent& ev)
 {
     return motionEvent(ev, getTopLevelWidget()->getScaleFactor());
+}
+
+bool QuantumValueSlider::onScroll(const ScrollEvent& ev)
+{
+    return scrollEvent(ev);
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -1153,6 +1529,300 @@ void QuantumLevelMeter::onNanoDisplay()
 
 // --------------------------------------------------------------------------------------------------------------------
 
+QuantumStereoLevelMeter::QuantumStereoLevelMeter(NanoTopLevelWidget* const parent, const QuantumTheme& t)
+    : NanoSubWidget(parent),
+      app(parent->getApp()),
+      theme(t)
+{
+    loadSharedResources();
+    setSize(QuantumMetrics(t).stereoLevelMeter);
+    app.addIdleCallback(this);
+}
+
+QuantumStereoLevelMeter::QuantumStereoLevelMeter(NanoSubWidget* const parent, const QuantumTheme& t)
+    : NanoSubWidget(parent),
+      app(parent->getApp()),
+      theme(t)
+{
+    loadSharedResources();
+    setSize(QuantumMetrics(t).stereoLevelMeter);
+    app.addIdleCallback(this);
+}
+
+QuantumStereoLevelMeter::~QuantumStereoLevelMeter()
+{
+    std::free(topLabel);
+}
+
+void QuantumStereoLevelMeter::setEnabled(const bool enabled2)
+{
+    if (enabled == enabled2)
+        return;
+
+    enabled = enabled2;
+    repaint();
+}
+
+void QuantumStereoLevelMeter::setRange(const float min, const float max)
+{
+    minimum = min;
+    maximum = max;
+    repaint();
+}
+
+void QuantumStereoLevelMeter::setTopLabel(const char* const label)
+{
+    std::free(topLabel);
+    topLabel = label != nullptr ? strdup(label) : nullptr;
+    repaint();
+}
+
+void QuantumStereoLevelMeter::setValueL(const float value)
+{
+    if (value >= falloffL)
+    {
+        falloffL = value;
+        lastTimeL = timeL = app.getTime();
+    }
+
+    if (d_isEqual(valueL, value))
+        return;
+
+    valueL = value;
+
+    repaint();
+}
+
+void QuantumStereoLevelMeter::setValueR(const float value)
+{
+    if (value >= falloffR)
+    {
+        falloffR = value;
+        lastTimeR = timeR = app.getTime();
+    }
+
+    if (d_isEqual(valueR, value))
+        return;
+
+    valueR = value;
+
+    repaint();
+}
+
+void QuantumStereoLevelMeter::setValues(const float l, const float r)
+{
+    falloffL = valueL = l;
+    falloffR = valueR = r;
+    lastTimeL = timeL = lastTimeR = timeR = 0;
+    repaint();
+}
+
+void QuantumStereoLevelMeter::onNanoDisplay()
+{
+    const uint width = getWidth();
+    float verticalReservedHeight, usableMeterHeight;
+
+    if (topLabel != nullptr)
+    {
+        verticalReservedHeight = theme.fontSize * 2 / 3 + theme.padding;
+        usableMeterHeight = getHeight() - verticalReservedHeight - theme.textHeight - theme.padding;
+    }
+    else
+    {
+        verticalReservedHeight = theme.textHeight;
+        usableMeterHeight = getHeight() - verticalReservedHeight;
+    }
+
+    const float centerX = static_cast<float>(width) / 2;
+
+    beginPath();
+    rect(0, verticalReservedHeight, width, usableMeterHeight);
+    fillColor(theme.widgetBackgroundColor);
+    fill();
+
+    float value;
+    char valuestr[32] = {};
+
+    const float meterChannelWidth = theme.textHeight - theme.borderSize * 2;
+    const float meterChannelHeight = usableMeterHeight - theme.borderSize * 2;
+
+    const float pxl = theme.borderSize;
+    const float pxr = theme.borderSize * 5 + meterChannelWidth;
+
+    // alternate background
+    fillColor(Color(theme.windowBackgroundColor, theme.widgetBackgroundColor, 0.75f));
+
+    beginPath();
+    rect(pxl,
+         theme.borderSize + verticalReservedHeight,
+         meterChannelWidth, meterChannelHeight);
+    fill();
+
+    beginPath();
+    rect(pxr,
+         theme.borderSize + verticalReservedHeight,
+         meterChannelWidth, meterChannelHeight);
+    fill();
+
+    // fake spacer
+    fillColor(Color(theme.widgetBackgroundColor, theme.windowBackgroundColor, 0.5f));
+
+    beginPath();
+    rect(pxr - theme.borderSize * 3, verticalReservedHeight,
+         theme.borderSize * 2, meterChannelHeight + theme.borderSize * 2);
+    fill();
+
+    // common setup
+    fontSize(theme.fontSize * 2 / 3);
+    textAlign(ALIGN_CENTER|ALIGN_BOTTOM);
+
+    // left channel
+    value = normalizedLevelMeterValue(valueL);
+
+    if (d_isNotZero(value))
+    {
+        beginPath();
+        rect(pxl,
+             theme.borderSize + verticalReservedHeight + meterChannelHeight * (1.f - value),
+             meterChannelWidth, meterChannelHeight * value);
+        fillColor(enabled ? theme.levelMeterColor : theme.textDarkColor.withAlpha(0.5f));
+        fill();
+
+        std::snprintf(valuestr, sizeof(valuestr)-1, "%.0f", valueL);
+    }
+    else
+    {
+        std::strncpy(valuestr, "-inf", sizeof(valuestr)-1);
+    }
+
+    if (topLabel == nullptr)
+    {
+        fillColor(enabled ? theme.textLightColor : theme.textDarkColor);
+        text(pxl + meterChannelWidth / 2,
+             verticalReservedHeight, valuestr, nullptr);
+    }
+
+    if (d_isNotEqual(valueL, falloffL))
+    {
+        value = normalizedLevelMeterValue(falloffL);
+        const float y = theme.borderSize + verticalReservedHeight + meterChannelHeight * (1.f - value);
+
+        beginPath();
+        moveTo(pxl, y);
+        lineTo(pxl + meterChannelWidth, y);
+        strokeColor(enabled ? theme.levelMeterColor : theme.textDarkColor.withAlpha(0.5f));
+        strokeWidth(theme.borderSize);
+        stroke();
+    }
+
+    // right channel
+    value = normalizedLevelMeterValue(valueR);
+
+    if (d_isNotZero(value))
+    {
+        beginPath();
+        rect(pxr,
+             theme.borderSize + verticalReservedHeight + meterChannelHeight * (1.f - value),
+             meterChannelWidth, meterChannelHeight * value);
+        fillColor(enabled ? theme.levelMeterColor : theme.textDarkColor.withAlpha(0.5f));
+        fill();
+
+        std::snprintf(valuestr, sizeof(valuestr)-1, "%.0f", valueR);
+    }
+    else
+    {
+        std::strncpy(valuestr, "-inf", sizeof(valuestr)-1);
+    }
+
+    fillColor(enabled ? theme.textLightColor : theme.textDarkColor);
+
+    if (topLabel != nullptr)
+        text(width * 0.5f, verticalReservedHeight, topLabel, nullptr);
+    else
+        text(pxr + meterChannelWidth / 2, verticalReservedHeight, valuestr, nullptr);
+
+    if (d_isNotEqual(valueR, falloffR))
+    {
+        value = normalizedLevelMeterValue(falloffR);
+        const float y = theme.borderSize + verticalReservedHeight + meterChannelHeight * (1.f - value);
+
+        beginPath();
+        moveTo(pxr, y);
+        lineTo(pxr + meterChannelWidth, y);
+        strokeColor(enabled ? theme.levelMeterColor : theme.textDarkColor.withAlpha(0.5f));
+        strokeWidth(theme.borderSize);
+        stroke();
+    }
+
+    // helper lines with labels
+    constexpr const float db2 = 1.f - normalizedLevelMeterValue(-2);
+    constexpr const float db5 = 1.f - normalizedLevelMeterValue(-5);
+    constexpr const float db10 = 1.f - normalizedLevelMeterValue(-10);
+    constexpr const float db20 = 1.f - normalizedLevelMeterValue(-20);
+    constexpr const float db30 = 1.f - normalizedLevelMeterValue(-30);
+    constexpr const float db40 = 1.f - normalizedLevelMeterValue(-40);
+    constexpr const float db50 = 1.f - normalizedLevelMeterValue(-50);
+    fillColor(enabled ? theme.textMidColor : theme.textDarkColor);
+    fontSize(theme.fontSize);
+    textAlign(ALIGN_CENTER|ALIGN_MIDDLE);
+    const float yOffset = theme.borderSize + verticalReservedHeight;
+    text(centerX, yOffset + usableMeterHeight * db2, "-  2  -", nullptr);
+    text(centerX, yOffset + usableMeterHeight * db5, "-  5  -", nullptr);
+    text(centerX, yOffset + usableMeterHeight * db10, "- 10 -", nullptr);
+    text(centerX, yOffset + usableMeterHeight * db20, "- 20 -", nullptr);
+    text(centerX, yOffset + usableMeterHeight * db30, "- 30 -", nullptr);
+    text(centerX, yOffset + usableMeterHeight * db40, "- 40 -", nullptr);
+    text(centerX, yOffset + usableMeterHeight * db50, "- 50 -", nullptr);
+}
+
+void QuantumStereoLevelMeter::idleCallback()
+{
+    const double time = app.getTime(); // in seconds
+
+    // TESTING
+    DISTRHO_SAFE_ASSERT_RETURN(falloffL >= valueL,);
+    DISTRHO_SAFE_ASSERT_RETURN(falloffR >= valueR,);
+
+    constexpr const double secondsToWaitForFalloffStart = 2;
+    constexpr const double falloffDbPerSecond = 8.6;
+
+    if (d_isEqual(valueL, falloffL))
+    {
+        lastTimeL = timeL = time;
+    }
+    else
+    {
+        const double diffSinceValueSet = time - timeL;
+        const double diffSinceLastIdle = time - lastTimeL;
+        lastTimeL = time;
+
+        if (diffSinceValueSet >= secondsToWaitForFalloffStart)
+        {
+            falloffL = std::max(valueL, static_cast<float>(falloffL - falloffDbPerSecond * diffSinceLastIdle));
+            repaint();
+        }
+    }
+
+    if (d_isEqual(valueR, falloffR))
+    {
+        lastTimeR = timeR = time;
+    }
+    else
+    {
+        const double diffSinceValueSet = time - timeR;
+        const double diffSinceLastIdle = time - lastTimeR;
+        lastTimeR = time;
+
+        if (diffSinceValueSet >= secondsToWaitForFalloffStart)
+        {
+            falloffR = std::max(valueR, static_cast<float>(falloffR - falloffDbPerSecond * diffSinceLastIdle));
+            repaint();
+        }
+    }
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
 QuantumStereoLevelMeterWithLUFS::QuantumStereoLevelMeterWithLUFS(NanoTopLevelWidget* const parent, const QuantumTheme& t)
     : NanoSubWidget(parent),
       app(parent->getApp()),
@@ -1173,10 +1843,31 @@ QuantumStereoLevelMeterWithLUFS::QuantumStereoLevelMeterWithLUFS(NanoSubWidget* 
     app.addIdleCallback(this);
 }
 
+QuantumStereoLevelMeterWithLUFS::~QuantumStereoLevelMeterWithLUFS()
+{
+    std::free(topLabel);
+}
+
+void QuantumStereoLevelMeterWithLUFS::setEnabled(const bool enabled2)
+{
+    if (enabled == enabled2)
+        return;
+
+    enabled = enabled2;
+    repaint();
+}
+
 void QuantumStereoLevelMeterWithLUFS::setRange(const float min, const float max)
 {
     minimum = min;
     maximum = max;
+    repaint();
+}
+
+void QuantumStereoLevelMeterWithLUFS::setTopLabel(const char* const label)
+{
+    std::free(topLabel);
+    topLabel = label != nullptr ? strdup(label) : nullptr;
     repaint();
 }
 
@@ -1212,6 +1903,15 @@ void QuantumStereoLevelMeterWithLUFS::setValueR(const float value)
     repaint();
 }
 
+void QuantumStereoLevelMeterWithLUFS::setValueLimiter(const float value)
+{
+    if (d_isEqual(valueLimiter, value))
+        return;
+
+    valueLimiter = value;
+    repaint();
+}
+
 void QuantumStereoLevelMeterWithLUFS::setValueLufs(const float value)
 {
     if (d_isEqual(valueLufs, value))
@@ -1221,10 +1921,11 @@ void QuantumStereoLevelMeterWithLUFS::setValueLufs(const float value)
     repaint();
 }
 
-void QuantumStereoLevelMeterWithLUFS::setValues(const float l, const float r, const float lufs)
+void QuantumStereoLevelMeterWithLUFS::setValues(const float l, const float r, const float limiter, const float lufs)
 {
     falloffL = valueL = l;
     falloffR = valueR = r;
+    valueLimiter = limiter;
     valueLufs = lufs;
     lastTimeL = timeL = lastTimeR = timeR = 0;
     repaint();
@@ -1232,12 +1933,24 @@ void QuantumStereoLevelMeterWithLUFS::setValues(const float l, const float r, co
 
 void QuantumStereoLevelMeterWithLUFS::onNanoDisplay()
 {
-    const float verticalReservedHeight = theme.textHeight;
-    const float usableMeterHeight = getHeight() - verticalReservedHeight * 2;
-    const float centerX = static_cast<float>(getWidth()) / 2;
+    const uint width = getWidth();
+    float verticalReservedHeight, usableMeterHeight;
+
+    if (topLabel != nullptr)
+    {
+        verticalReservedHeight = theme.fontSize * 2 / 3 + theme.padding;
+        usableMeterHeight = getHeight() - verticalReservedHeight - theme.textHeight - theme.padding;
+    }
+    else
+    {
+        verticalReservedHeight = theme.textHeight;
+        usableMeterHeight = getHeight() - verticalReservedHeight * 2;
+    }
+
+    const float centerX = static_cast<float>(width) / 2;
 
     beginPath();
-    rect(0, verticalReservedHeight, getWidth(), usableMeterHeight);
+    rect(0, verticalReservedHeight, width, usableMeterHeight);
     fillColor(theme.widgetBackgroundColor);
     fill();
 
@@ -1294,7 +2007,7 @@ void QuantumStereoLevelMeterWithLUFS::onNanoDisplay()
         rect(pxl,
              theme.borderSize + verticalReservedHeight + meterChannelHeight * (1.f - value),
              meterChannelWidth, meterChannelHeight * value);
-        fillColor(theme.levelMeterColor);
+        fillColor(enabled ? theme.levelMeterColor : theme.textDarkColor.withAlpha(0.5f));
         fill();
 
         std::snprintf(valuestr, sizeof(valuestr)-1, "%.0f", valueL);
@@ -1304,11 +2017,14 @@ void QuantumStereoLevelMeterWithLUFS::onNanoDisplay()
         std::strncpy(valuestr, "-inf", sizeof(valuestr)-1);
     }
 
-    fillColor(theme.textLightColor);
-    fontSize(theme.fontSize * 2 / 3);
-    textAlign(ALIGN_CENTER|ALIGN_BOTTOM);
-    text(pxl + meterChannelWidth / 2,
-         verticalReservedHeight, valuestr, nullptr);
+    if (topLabel == nullptr)
+    {
+        fillColor(enabled ? theme.textLightColor : theme.textDarkColor);
+        fontSize(theme.fontSize * 2 / 3);
+        textAlign(ALIGN_CENTER|ALIGN_BOTTOM);
+        text(pxl + meterChannelWidth / 2,
+             verticalReservedHeight, valuestr, nullptr);
+    }
 
     if (d_isNotEqual(valueL, falloffL))
     {
@@ -1318,7 +2034,7 @@ void QuantumStereoLevelMeterWithLUFS::onNanoDisplay()
         beginPath();
         moveTo(pxl, y);
         lineTo(pxl + meterChannelWidth, y);
-        strokeColor(theme.levelMeterColor);
+        strokeColor(enabled ? theme.levelMeterColor : theme.textDarkColor.withAlpha(0.5f));
         strokeWidth(theme.borderSize);
         stroke();
     }
@@ -1332,7 +2048,7 @@ void QuantumStereoLevelMeterWithLUFS::onNanoDisplay()
         rect(pxr,
              theme.borderSize + verticalReservedHeight + meterChannelHeight * (1.f - value),
              meterChannelWidth, meterChannelHeight * value);
-        fillColor(theme.levelMeterColor);
+        fillColor(enabled ? theme.levelMeterColor : theme.textDarkColor.withAlpha(0.5f));
         fill();
 
         std::snprintf(valuestr, sizeof(valuestr)-1, "%.0f", valueR);
@@ -1342,11 +2058,14 @@ void QuantumStereoLevelMeterWithLUFS::onNanoDisplay()
         std::strncpy(valuestr, "-inf", sizeof(valuestr)-1);
     }
 
-    fillColor(theme.textLightColor);
+    fillColor(enabled ? theme.textLightColor : theme.textDarkColor);
     fontSize(theme.fontSize * 2 / 3);
     textAlign(ALIGN_CENTER|ALIGN_BOTTOM);
-    text(pxr + meterChannelWidth / 2,
-         verticalReservedHeight, valuestr, nullptr);
+
+    if (topLabel != nullptr)
+        text(width * 0.5f, verticalReservedHeight, topLabel, nullptr);
+    else
+        text(pxr + meterChannelWidth / 2, verticalReservedHeight, valuestr, nullptr);
 
     if (d_isNotEqual(valueR, falloffR))
     {
@@ -1356,7 +2075,7 @@ void QuantumStereoLevelMeterWithLUFS::onNanoDisplay()
         beginPath();
         moveTo(pxr, y);
         lineTo(pxr + meterChannelWidth, y);
-        strokeColor(theme.levelMeterColor);
+        strokeColor(enabled ? theme.levelMeterColor : theme.textDarkColor.withAlpha(0.5f));
         strokeWidth(theme.borderSize);
         stroke();
     }
@@ -1371,7 +2090,7 @@ void QuantumStereoLevelMeterWithLUFS::onNanoDisplay()
              theme.borderSize + verticalReservedHeight + meterChannelHeight * (1.f - value),
              meterChannelWidth * 2 + theme.borderSize * 2,
              meterChannelHeight * value);
-        fillColor(theme.levelMeterAlternativeColor);
+        fillColor(enabled ? theme.levelMeterAlternativeColor : theme.textDarkColor.withAlpha(0.5f));
         fill();
 
         std::snprintf(valuestr, sizeof(valuestr)-1, "LUFS: %.1f", valueLufs);
@@ -1381,10 +2100,24 @@ void QuantumStereoLevelMeterWithLUFS::onNanoDisplay()
         std::strncpy(valuestr, "LUFS: -inf", sizeof(valuestr)-1);
     }
 
-    fillColor(theme.textLightColor);
+    fillColor(enabled ? theme.textLightColor : theme.textDarkColor);
     fontSize(theme.fontSize);
     textAlign(ALIGN_LEFT|ALIGN_BOTTOM);
     text(theme.borderSize + theme.padding, getHeight() - theme.borderSize, valuestr, nullptr);
+
+    // limiter
+    value = normalizedLevelMeterValue(valueLimiter);
+
+    if (d_isNotEqual(value, 1.f))
+    {
+        beginPath();
+        rect(pxlufs,
+             theme.borderSize + verticalReservedHeight,
+             meterChannelWidth * 2 + theme.borderSize * 2,
+             meterChannelHeight * (1.f - value));
+        fillColor(enabled ? theme.widgetAlternativeColor: theme.textDarkColor.withAlpha(0.5f));
+        fill();
+    }
 
     // helper lines with labels
     constexpr const float db2 = 1.f - normalizedLevelMeterValue(-2);
@@ -1394,7 +2127,7 @@ void QuantumStereoLevelMeterWithLUFS::onNanoDisplay()
     constexpr const float db30 = 1.f - normalizedLevelMeterValue(-30);
     constexpr const float db40 = 1.f - normalizedLevelMeterValue(-40);
     constexpr const float db50 = 1.f - normalizedLevelMeterValue(-50);
-    fillColor(theme.textLightColor);
+    fillColor(enabled ? theme.textMidColor : theme.textDarkColor);
     fontSize(theme.fontSize);
     textAlign(ALIGN_CENTER|ALIGN_MIDDLE);
     const float yOffset = theme.borderSize + verticalReservedHeight;

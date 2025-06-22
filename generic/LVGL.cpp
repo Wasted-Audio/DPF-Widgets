@@ -15,7 +15,12 @@
  */
 
 #include "LVGL.hpp"
-#include "OpenGL.hpp"
+
+#if defined(DGL_CAIRO)
+# include "Cairo.hpp"
+#elif defined(DGL_OPENGL)
+# include "OpenGL.hpp"
+#endif
 
 #include "../distrho/extra/RingBuffer.hpp"
 #include "../distrho/extra/Sleep.hpp"
@@ -43,7 +48,11 @@ struct LVGLWidget<BaseWidget>::PrivateData {
     double mouseWheelDelta = 0.0;
     SmallStackRingBuffer keyBuffer;
 
+   #if defined(DGL_CAIRO)
+    cairo_surface_t* surface = nullptr;
+   #elif defined(DGL_OPENGL)
     GLuint textureId = 0;
+   #endif
     Size<uint> textureSize;
     uint8_t* textureData = nullptr;
 
@@ -113,6 +122,7 @@ private:
             lv_indev_set_group(indev, group);
         }
 
+       #ifdef DGL_OPENGL
         glGenTextures(1, &textureId);
         DISTRHO_SAFE_ASSERT_RETURN(textureId != 0,);
 
@@ -121,14 +131,15 @@ private:
 
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
         static constexpr const float transparent[] = { 0.f, 0.f, 0.f, 0.f };
         glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, transparent);
 
         glBindTexture(GL_TEXTURE_2D, 0);
         glDisable(GL_TEXTURE_2D);
+       #endif
 
         lv_display_set_driver_data(display, this);
         lv_display_set_flush_cb(display, flush_cb);
@@ -171,11 +182,16 @@ private:
             display = nullptr;
         }
 
+       #if defined(DGL_CAIRO)
+        cairo_surface_destroy(surface);
+        surface = nullptr;
+       #elif defined(DGL_OPENGL)
         if (textureId != 0)
         {
             glDeleteTextures(1, &textureId);
             textureId = 0;
         }
+       #endif
 
         std::free(textureData);
         textureData = nullptr;
@@ -186,13 +202,20 @@ private:
     void recreateTextureData(const uint width, const uint height)
     {
         const lv_color_format_t lvformat = lv_display_get_color_format(display);
-        const uint32_t data_size = lv_draw_buf_width_to_stride(width, lvformat) * height;
+        const uint32_t stride = lv_draw_buf_width_to_stride(width, lvformat);
+        const uint32_t data_size = stride * height;
 
         textureData = static_cast<uint8_t*>(std::realloc(textureData, data_size));
         std::memset(textureData, 0, data_size);
 
         textureSize = Size<uint>(width, height);
         lv_display_set_buffers(display, textureData, nullptr, data_size, LV_DISPLAY_RENDER_MODE_DIRECT);
+
+       #ifdef DGL_CAIRO
+        cairo_surface_destroy(surface);
+        surface = cairo_image_surface_create_for_data(textureData, CAIRO_FORMAT_ARGB32, width, height, stride);
+        DISTRHO_SAFE_ASSERT(surface != nullptr);
+       #endif
     }
 
     void repaint(const Rectangle<uint>& rect);
@@ -299,19 +322,13 @@ void LVGLWidget<BaseWidget>::onDisplay()
 {
     DISTRHO_SAFE_ASSERT_RETURN(BaseWidget::getSize() == lvglData->textureSize,);
 
-   #if LV_COLOR_DEPTH == 32
-    static constexpr const GLenum format = GL_BGRA;
-   #elif LV_COLOR_DEPTH == 24
-    static constexpr const GLenum format = GL_BGR;
-   #else
-    #error Unsupported color format
-   #endif
-
     const int32_t width = static_cast<int32_t>(BaseWidget::getWidth());
     const int32_t height = static_cast<int32_t>(BaseWidget::getHeight());
 
 #if 0
+    // TODO see what is really needed here..
     glColor4f(1.f, 1.f, 1.f, 1.f);
+    // glClearColor();
     glBegin(GL_QUADS);
     {
         glTexCoord2f(0.f, 0.f);
@@ -329,12 +346,37 @@ void LVGLWidget<BaseWidget>::onDisplay()
     glEnd();
 #endif
 
+   #if defined(DGL_CAIRO)
+    if (lvglData->surface != nullptr)
+    {
+        cairo_t* const handle = static_cast<const CairoGraphicsContext&>(BaseWidget::getGraphicsContext()).handle;
+        cairo_set_source_surface(handle, lvglData->surface, 0, 0);
+        cairo_paint(handle);
+    }
+
+    lv_area_set(&lvglData->updatedArea, 0, 0, 0, 0);
+   #elif defined(DGL_OPENGL)
     glEnable(GL_TEXTURE_2D);
     glBindTexture(GL_TEXTURE_2D, lvglData->textureId);
 
     if (lvglData->updatedArea.x1 != lvglData->updatedArea.x2 || lvglData->updatedArea.y1 != lvglData->updatedArea.y2)
     {
-        glPixelStorei(GL_PACK_ALIGNMENT, 1);
+       #if LV_COLOR_DEPTH == 32
+        static constexpr const GLenum format = GL_BGRA;
+        static constexpr const GLenum ftype = GL_UNSIGNED_BYTE;
+       #elif LV_COLOR_DEPTH == 24
+        static constexpr const GLenum format = GL_BGR;
+        static constexpr const GLenum ftype = GL_UNSIGNED_BYTE;
+       #elif LV_COLOR_DEPTH == 16
+        static constexpr const GLenum format = GL_RGB;
+        static constexpr const GLenum ftype = GL_UNSIGNED_SHORT_5_6_5;
+       #elif LV_COLOR_DEPTH == 8
+        static constexpr const GLenum format = GL_LUMINANCE;
+        static constexpr const GLenum ftype = GL_UNSIGNED_BYTE;
+       #else
+        #error Unsupported color format
+       #endif
+
         glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
         glPixelStorei(GL_UNPACK_ROW_LENGTH, width);
 
@@ -344,7 +386,7 @@ void LVGLWidget<BaseWidget>::onDisplay()
             lvglData->updatedArea.x2 == width &&
             lvglData->updatedArea.y2 == height)
         {
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, format, GL_UNSIGNED_BYTE, lvglData->textureData);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, format, ftype, lvglData->textureData);
         }
         // partial size
         else
@@ -362,7 +404,7 @@ void LVGLWidget<BaseWidget>::onDisplay()
                             partial_y,
                             partial_width,
                             partial_height,
-                            format, GL_UNSIGNED_BYTE,
+                            format, ftype,
                             lvglData->textureData + offset);
         }
 
@@ -387,6 +429,7 @@ void LVGLWidget<BaseWidget>::onDisplay()
 
     glBindTexture(GL_TEXTURE_2D, 0);
     glDisable(GL_TEXTURE_2D);
+   #endif
 }
 
 template <class BaseWidget>
